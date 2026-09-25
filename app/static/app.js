@@ -197,6 +197,7 @@ $$(".tab").forEach((btn) => {
         if (btn.dataset.tab === "table") loadAddresses();
         if (btn.dataset.tab === "review") loadReview();
         if (btn.dataset.tab === "gaps") loadCoverageGaps();
+        if (btn.dataset.tab === "audit") loadAddressAudit();
         if (btn.dataset.tab === "experiment") {
             renderProfileEditor();
             loadExperimentHistory();
@@ -314,6 +315,7 @@ $("#btn-sample").addEventListener("click", async () => {
             `<span class="ok-msg">新增 ${s.inserted} 条，跳过重复 ${s.duplicates} 条</span>`;
         loadAddresses();
         refreshHealth();
+        refreshAuditBadge();
     } catch (err) {
         $("#table-msg").innerHTML = `<span class="err-msg">${escapeHtml(err.message)}</span>`;
     }
@@ -421,6 +423,7 @@ async function directUpload(file) {
     $("#csv-file").value = "";
     loadAddresses();
     refreshHealth();
+    refreshAuditBadge();
 }
 
 $("#csv-preview-panel").addEventListener("click", async (event) => {
@@ -471,6 +474,7 @@ $("#csv-preview-panel").addEventListener("click", async (event) => {
         $("#csv-file").value = "";
         loadAddresses();
         refreshHealth();
+        refreshAuditBadge();
     } catch (err) {
         msg.innerHTML = `<span class="err-msg">${escapeHtml(err.message)}</span>`;
         confirmBtn.disabled = false;
@@ -713,6 +717,100 @@ async function loadCoverageGaps() {
 
 $("#btn-refresh-gaps").addEventListener("click", loadCoverageGaps);
 $("#gaps-filter").addEventListener("change", loadCoverageGaps);
+
+// -------------------------------------------------------- self-match audit
+
+const AUDIT_CATEGORY_LABEL = {
+    self_score_low: "自身分数不足",
+    best_drifted: "首选偏移",
+    margin_ambiguous: "分差歧义",
+};
+
+// The audit scores every address against the whole table on each call, so
+// (like the gaps manifest) it is only recomputed once the tab was opened.
+let auditEverLoaded = false;
+
+function renderAuditItem(item) {
+    const a = item.address;
+    const bestLine = item.best_id !== null && item.best_id !== a.id
+        ? `<div class="audit-best">当前首选：<b>#${item.best_id}</b> ` +
+          `${escapeHtml(item.best_full_text || "")}` +
+          `<span class="muted">（综合 ${pct(item.best_score)}）</span></div>`
+        : "";
+    const blockers = item.blockers.length
+        ? item.blockers.map((c, i) => {
+            const delta = c.score - item.own_score;
+            const rel = delta >= 0 ? `高于自身 ${pct(delta)}` : `低于自身 ${pct(-delta)}`;
+            const ribbon = c.address.id === item.best_id
+                ? { id: item.best_id, label: "当前首选" }
+                : null;
+            return `<div class="audit-blocker">
+                <div class="audit-blocker-meta muted">阻碍候选 #${i + 1} · 综合 ${pct(c.score)}（${rel}）</div>
+                ${renderCandidate(c, i, { targetRibbon: ribbon })}
+            </div>`;
+        }).join("")
+        : '<div class="meta muted">无阻碍候选：没有其他地址得分达到「自身分数 − 默认分差阈值」。</div>';
+    return `
+    <div class="audit-item">
+        <div class="audit-head">
+            <span class="audit-cat ${item.category}">${AUDIT_CATEGORY_LABEL[item.category] || item.category}</span>
+            <span class="audit-addr">原地址 #${a.id} ${escapeHtml(a.full_text)}</span>
+        </div>
+        <div class="audit-meta muted">
+            自身分数 <b>${pct(item.own_score)}</b>
+            ${a.house ? ` · 门牌号 ${escapeHtml(a.house)}` : ""}
+            ${a.external_id ? ` · 外部编号 ${escapeHtml(a.external_id)}` : ""}
+            · 匹配状态 <span class="status ${item.match_status}">${STATUS_LABEL[item.match_status] || item.match_status}</span>
+        </div>
+        <div class="audit-reason">判定原因：${escapeHtml(item.audit_reason)}
+            <span class="muted">（匹配器判定：${escapeHtml(item.match_reason)}）</span></div>
+        ${bestLine}
+        <div class="audit-blockers">
+            <div class="muted">阻碍候选 ${item.blockers.length} 个
+                （得分 ≥ 自身分数 − 默认分差阈值，即 ≥ ${pct(item.blocker_floor)}，不受前五截断）：</div>
+            ${blockers}
+        </div>
+    </div>`;
+}
+
+async function loadAddressAudit() {
+    const filter = $("#audit-filter").value;
+    const list = $("#audit-list");
+    list.innerHTML = '<p class="muted">正在用当前标准地址表逐条自匹配巡检…</p>';
+    try {
+        const qs = filter ? `?category=${encodeURIComponent(filter)}` : "";
+        const data = await api(`/api/address-audit${qs}`);
+        auditEverLoaded = true;
+        $("#audit-count").textContent = data.risk_count || "";
+        $("#audit-summary").innerHTML =
+            `<span class="muted">共 <b>${data.total_addresses}</b> 条标准地址：` +
+            `自动命中自身 <b>${data.auto_hit_self}</b> · 风险 <b>${data.risk_count}</b>` +
+            `（<span class="audit-cat best_drifted">首选偏移 ${data.best_drifted}</span>` +
+            ` <span class="audit-cat self_score_low">自身分数不足 ${data.self_score_low}</span>` +
+            ` <span class="audit-cat margin_ambiguous">分差歧义 ${data.margin_ambiguous}</span>）` +
+            ` · 巡检时间 ${escapeHtml(data.generated_at)}</span>`;
+        if (data.items.length === 0) {
+            list.innerHTML = filter
+                ? '<p class="muted">当前筛选条件下没有风险记录。</p>'
+                : '<p class="ok-msg">✓ 全部标准地址都能以自身全文自动命中自身 ID，未发现风险。</p>';
+            return;
+        }
+        list.innerHTML = data.items.map(renderAuditItem).join("");
+    } catch (err) {
+        list.innerHTML = `<p class="err-msg">${escapeHtml(err.message)}</p>`;
+    }
+}
+
+$("#btn-refresh-audit").addEventListener("click", loadAddressAudit);
+$("#audit-filter").addEventListener("change", loadAddressAudit);
+
+async function refreshAuditBadge() {
+    // Table changed (upload / sample load): recompute the audit, but only
+    // after the tab has been opened at least once -- each call scores every
+    // address against the whole table, so we don't poll it from elsewhere.
+    if (!auditEverLoaded) return;
+    await loadAddressAudit();
+}
 
 // ------------------------------------------------------------------ health
 

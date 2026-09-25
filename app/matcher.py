@@ -308,7 +308,15 @@ def _detect_conflicts(ts: AddressTokenScore, query_house: str | None,
     return conflicts
 
 
-def match_address(query_text: str, rows: list[Any], settings: Settings) -> MatchResult:
+def match_address(query_text: str, rows: list[Any], settings: Settings,
+                  top_n: int | None = 5) -> MatchResult:
+    """Score ``query_text`` against every row and derive the match verdict.
+
+    ``top_n`` caps how many scored candidates are kept in the result (the
+    verdict itself only ever looks at the best two). ``None`` keeps the full
+    scored list -- used by the self-match audit, which must see every address
+    scoring close to the record's own score, beyond the usual top-5 cut.
+    """
     query_norm = normalize(query_text)
     results: list[CandidateResult] = []
 
@@ -336,7 +344,7 @@ def match_address(query_text: str, rows: list[Any], settings: Settings) -> Match
         ))
 
     results.sort(key=lambda r: r.score, reverse=True)
-    top = results[:5]
+    top = results[:top_n] if top_n is not None else list(results)
     best = top[0] if top else None
     runner_up = top[1] if len(top) > 1 else None
 

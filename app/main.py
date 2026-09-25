@@ -11,7 +11,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from . import consensus, coverage_gaps, db, experiments, ingest, review_groups
+from . import address_audit, consensus, coverage_gaps, db, experiments, ingest, review_groups
 from .config import Settings, get_settings
 from .matcher import candidate_to_dict, match_address, result_to_dict
 from .schemas import (
@@ -433,6 +433,29 @@ def list_coverage_gaps(status: str | None = None,
             detail="非法 status 过滤值，仅支持 open / covered",
         )
     return coverage_gaps.compute_gaps(conn, settings, coverage=status)
+
+
+# --- standard-address self-match audit --------------------------------------
+
+
+@app.get("/api/address-audit")
+def list_address_audit(category: str | None = None,
+                       conn: db.sqlite3.Connection = Depends(get_conn),
+                       settings: Settings = Depends(settings_dep)) -> dict[str, Any]:
+    """标准地址自匹配巡检：对当前表每条标准地址，以其全文作为查询、按默认规则
+    在完整地址表上重新评分，只列出未自动命中自身 ID 的记录。
+
+    每条风险给出自身分数，以及所有得分不低于「自身分数 − 默认分差阈值」的
+    其他地址（不受前五候选截断），并按 自身分数不足 / 首选偏移 / 分差歧义
+    分类汇总。只读操作：不写入任何匹配日志，也不查询复核共识记忆。
+    """
+    if category is not None and category not in address_audit.VALID_CATEGORIES:
+        raise HTTPException(
+            status_code=400,
+            detail="非法 category 过滤值，仅支持 "
+                   "self_score_low / best_drifted / margin_ambiguous",
+        )
+    return address_audit.compute_audit(conn, settings, category=category)
 
 
 # --- rule A/B comparison experiments ----------------------------------------

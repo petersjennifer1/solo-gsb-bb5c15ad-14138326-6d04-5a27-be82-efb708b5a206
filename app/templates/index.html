@@ -21,6 +21,7 @@
     <button class="tab" data-tab="table">标准地址表 <span id="addr-count" class="count"></span></button>
     <button class="tab" data-tab="review">待确认队列 <span id="review-count" class="count"></span></button>
     <button class="tab" data-tab="gaps">地址覆盖缺口 <span id="gaps-count" class="count"></span></button>
+    <button class="tab" data-tab="audit">自匹配巡检 <span id="audit-count" class="count"></span></button>
 </nav>
 
 <main>
@@ -164,6 +165,33 @@
                 <span id="gaps-summary" class="hint"></span>
             </div>
             <div id="gaps-list"></div>
+        </div>
+    </section>
+
+    <!-- ==================== self-match audit ========================= -->
+    <section id="tab-audit" class="panel">
+        <div class="card">
+            <h2>标准地址自匹配巡检</h2>
+            <p class="hint">
+                对当前标准地址表中的<b>每一条记录</b>，以其全文作为查询、按<b>默认规则</b>在
+                <b>完整地址表</b>上重新评分，只列出<b>未能自动命中自身 ID</b> 的记录。
+                每条风险给出<b>自身分数</b>，以及所有得分不低于
+                <b>自身分数 − 默认分差阈值</b> 的其他地址（阻碍候选，不受前五候选截断）。
+                判定分三类：自身分数低于自动命中阈值为<b>自身分数不足</b>；自身达标但首选不是自身为
+                <b>首选偏移</b>；首选是自身但领先次高分不足为<b>分差歧义</b>。
+                上传新表后点击「重新巡检」即按最新表重新计算；本页只读，不生成匹配日志。
+            </p>
+            <div class="row wrap">
+                <select id="audit-filter">
+                    <option value="">全部风险</option>
+                    <option value="best_drifted">首选偏移</option>
+                    <option value="self_score_low">自身分数不足</option>
+                    <option value="margin_ambiguous">分差歧义</option>
+                </select>
+                <button id="btn-refresh-audit" class="primary">重新巡检</button>
+                <span id="audit-summary" class="hint"></span>
+            </div>
+            <div id="audit-list"></div>
         </div>
     </section>
 </main>

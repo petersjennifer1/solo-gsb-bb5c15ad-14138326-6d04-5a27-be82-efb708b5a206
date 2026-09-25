@@ -388,3 +388,27 @@ th { color: var(--muted); font-weight: 600; }
 .gap-details > summary {
     cursor: pointer; font-size: 13px; color: var(--primary);
 }
+
+/* ============================================== self-match audit page */
+
+.audit-item {
+    border: 1px solid var(--line); border-radius: 10px;
+    padding: 14px 16px; margin-top: 12px; background: #fffdf6;
+}
+.audit-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.audit-cat {
+    display: inline-block; padding: 3px 12px; border-radius: 999px;
+    font-size: 12px; font-weight: 700; white-space: nowrap;
+}
+.audit-cat.best_drifted { background: var(--red-bg); color: var(--red); }
+.audit-cat.self_score_low { background: var(--amber-bg); color: var(--amber); }
+.audit-cat.margin_ambiguous { background: var(--gray-bg); color: var(--muted); }
+.audit-addr { font-weight: 600; word-break: break-all; }
+.audit-meta { margin: 8px 0; word-break: break-all; }
+.audit-meta b { color: var(--ink); }
+.audit-meta .status { margin-bottom: 0; }
+.audit-reason { font-size: 13px; margin: 6px 0; word-break: break-all; }
+.audit-best { font-size: 13px; margin: 8px 0; word-break: break-all; }
+.audit-best b { color: var(--primary); }
+.audit-blockers { margin-top: 8px; }
+.audit-blocker-meta { margin: 8px 0 2px; }
