@@ -19,6 +19,7 @@
     <button class="tab" data-tab="match">单条 / 批量匹配</button>
     <button class="tab" data-tab="experiment">规则 A/B 实验</button>
     <button class="tab" data-tab="table">标准地址表 <span id="addr-count" class="count"></span></button>
+    <button class="tab" data-tab="audit">标准地址自匹配巡检 <span id="audit-count" class="count"></span></button>
     <button class="tab" data-tab="review">待确认队列 <span id="review-count" class="count"></span></button>
     <button class="tab" data-tab="gaps">地址覆盖缺口 <span id="gaps-count" class="count"></span></button>
 </nav>
@@ -121,6 +122,34 @@
                 取消勾选则沿用直接上传接口 <code>/api/addresses/upload</code>。
             </p>
             <div id="address-table-wrap" class="table-wrap"></div>
+        </div>
+    </section>
+
+    <!-- ==================== standard address self-audit ================= -->
+    <section id="tab-audit" class="panel">
+        <div class="card">
+            <h2>标准地址自匹配巡检</h2>
+            <p class="hint">
+                对当前标准地址表中的<b>每条</b>地址，以其<b>全文</b>作为查询，使用<b>默认规则</b>与
+                <b>完整地址表</b>评分；只列出<b>未自动命中自身 ID</b> 的记录。每条风险给出
+                <b>自身分数</b>及所有分数不低于「自身分数 − 默认分差阈值」的<b>阻碍候选</b>
+                （不受前五候选截断）：自身分数低于自动命中阈值为
+                <span class="audit-kind self_low">自身分数不足</span>；
+                首选是其他地址为 <span class="audit-kind top_shift">首选偏移</span>；
+                首选仍是自身但分差过小为 <span class="audit-kind margin_ambiguous">分差歧义</span>。
+                巡检为只读操作，不生成匹配日志；上传新表后点击「重新巡检并刷新」即按新表重算。
+            </p>
+            <div class="row wrap">
+                <div class="cmp-filterbar">
+                    <button class="tiny cmp-filter audit-filter active" data-kind="all">全部 <span class="audit-n" data-count="total">0</span></button>
+                    <button class="tiny cmp-filter audit-filter" data-kind="self_low">自身分数不足 <span class="audit-n" data-count="self_low">0</span></button>
+                    <button class="tiny cmp-filter audit-filter" data-kind="top_shift">首选偏移 <span class="audit-n" data-count="top_shift">0</span></button>
+                    <button class="tiny cmp-filter audit-filter" data-kind="margin_ambiguous">分差歧义 <span class="audit-n" data-count="margin_ambiguous">0</span></button>
+                </div>
+                <button id="btn-refresh-audit" class="primary">重新巡检并刷新</button>
+            </div>
+            <div id="audit-summary" class="hint"></div>
+            <div id="audit-list"></div>
         </div>
     </section>
 

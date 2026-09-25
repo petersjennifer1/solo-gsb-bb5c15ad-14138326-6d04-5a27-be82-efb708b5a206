@@ -195,6 +195,7 @@ $$(".tab").forEach((btn) => {
         btn.classList.add("active");
         $(`#tab-${btn.dataset.tab}`).classList.add("active");
         if (btn.dataset.tab === "table") loadAddresses();
+        if (btn.dataset.tab === "audit") loadAddressAudit();
         if (btn.dataset.tab === "review") loadReview();
         if (btn.dataset.tab === "gaps") loadCoverageGaps();
         if (btn.dataset.tab === "experiment") {
@@ -714,6 +715,146 @@ async function loadCoverageGaps() {
 $("#btn-refresh-gaps").addEventListener("click", loadCoverageGaps);
 $("#gaps-filter").addEventListener("change", loadCoverageGaps);
 
+// --------------------------------------------------- address self-audit
+
+// Full audit from the last load; the tab badge is refreshed after uploads
+// only once the tab has been opened at least once (the endpoint scores every
+// address against the whole table, so it is not polled on page load).
+let auditData = null;
+let auditEverLoaded = false;
+let auditFilter = "all";
+
+const AUDIT_KIND_LABEL = {
+    self_low: "自身分数不足",
+    top_shift: "首选偏移",
+    margin_ambiguous: "分差歧义",
+};
+
+function renderAuditRisk(risk) {
+    const self = risk.self_candidate || {};
+    const shifted = risk.kind === "top_shift";
+    const low = risk.kind === "self_low";
+    const targetRibbon = shifted
+        ? { id: risk.preferred_id, label: "当前首选" }
+        : { id: risk.address_id, label: "自身" };
+
+    // Own-score line: always shown, with the auto-threshold verdict.
+    const ownLine = `
+        <div class="audit-self ${low ? "low" : ""}">
+            <span class="audit-kind ${risk.kind}">${escapeHtml(risk.kind_label)}</span>
+            自身 <b>#${risk.address_id}</b>
+            ${risk.external_id ? `<span class="muted">（外部编号 ${escapeHtml(risk.external_id)}）</span>` : ""}
+            自匹配得分 <b>${pct(risk.own_score)}</b>
+            · 自身在全表中排第 <b>${risk.own_rank}</b> 位
+            ${shifted ? `· 当前首选 <b>#${risk.preferred_id}</b>（${pct(risk.preferred_score)}）` : ""}
+        </div>`;
+
+    // The own candidate (full details) followed by every blocking candidate
+    // within own_score - margin_threshold -- never cut off at the top 5.
+    const blockers = risk.blockers.map((c) => renderCandidate(c, c.rank - 1, {
+        targetRibbon: c.is_preferred ? targetRibbon : null,
+    })).join("");
+    const blockersHead = `
+        <div class="audit-blockers-head">
+            阻碍候选 <b>${risk.blocker_count}</b> 个
+            <span class="muted">（综合分 ≥ 自身 ${pct(risk.own_score)} − 分差阈值
+                ${pct(auditData.thresholds.margin_threshold)} =
+                ${pct(risk.blocker_threshold)}；以下为完整列表，不做前五截断）</span>
+        </div>`;
+
+    return `
+    <details class="audit-item" open>
+        <summary class="audit-summary">
+            <span class="audit-kind ${risk.kind}">${escapeHtml(risk.kind_label)}</span>
+            <span class="audit-addr">#${risk.address_id} ${escapeHtml(risk.full_text)}</span>
+            <span class="muted">自身 ${pct(risk.own_score)}</span>
+        </summary>
+        <div class="gap-meta">
+            原地址（即巡检查询）：🔍 ${escapeHtml(risk.query)}
+        </div>
+        ${ownLine}
+        <div class="audit-reason">判定原因：${escapeHtml(risk.reason)}</div>
+        <details class="gap-details audit-self-details" ${low ? "open" : ""}>
+            <summary>自身候选明细（排名 ${risk.own_rank}）</summary>
+            ${renderCandidate(self, risk.own_rank - 1, {
+                targetRibbon: shifted ? null : { id: risk.address_id, label: "自身" },
+            })}
+        </details>
+        <div class="audit-blockers">
+            ${blockersHead}
+            ${blockers || '<div class="meta muted">无其他地址达到阻碍阈值</div>'}
+        </div>
+    </details>`;
+}
+
+function updateAuditCounts(data) {
+    $("#audit-count").textContent = data.total_risks || "";
+    $$(".audit-n[data-count]").forEach((span) => {
+        const key = span.dataset.count;
+        span.textContent = key === "total" ? data.total_risks : (data[key] || 0);
+    });
+}
+
+async function loadAddressAudit() {
+    const list = $("#audit-list");
+    list.innerHTML = '<p class="muted">正在用默认规则对当前标准地址表逐条自匹配评分…</p>';
+    try {
+        const qs = auditFilter === "all" ? "" : `?kind=${encodeURIComponent(auditFilter)}`;
+        auditData = await api(`/api/address-audit${qs}`);
+        auditEverLoaded = true;
+        updateAuditCounts(auditData);
+        $$(".audit-filter").forEach((btn) =>
+            btn.classList.toggle("active", btn.dataset.kind === auditFilter));
+        const t = auditData.thresholds;
+        $("#audit-summary").innerHTML =
+            `<span class="muted">巡检时间 ${escapeHtml(auditData.generated_at)}` +
+            ` · 共 <b>${auditData.total_addresses}</b> 条标准地址，风险 <b>${auditData.total_risks}</b> 条：` +
+            ` <span class="audit-kind self_low">自身分数不足 ${auditData.self_low}</span>` +
+            ` <span class="audit-kind top_shift">首选偏移 ${auditData.top_shift}</span>` +
+            ` <span class="audit-kind margin_ambiguous">分差歧义 ${auditData.margin_ambiguous}</span>` +
+            ` · 默认阈值 自动命中 ${pct(t.auto_threshold)} / 分差 ${pct(t.margin_threshold)}` +
+            ` / 拒绝 ${pct(t.reject_threshold)}</span>`;
+        if (auditData.risks.length === 0) {
+            list.innerHTML = auditFilter === "all"
+                ? '<p class="muted">✓ 巡检通过：所有标准地址都能用默认规则自动命中自身 ID，且没有落在默认分差阈值内的阻碍候选。</p>'
+                : '<p class="muted">当前筛选条件下没有风险记录。</p>';
+            return;
+        }
+        list.innerHTML = auditData.risks.map(renderAuditRisk).join("");
+    } catch (err) {
+        list.innerHTML = `<p class="err-msg">${escapeHtml(err.message)}</p>`;
+    }
+}
+
+$("#btn-refresh-audit").addEventListener("click", loadAddressAudit);
+
+$$(".audit-filter").forEach((btn) => {
+    btn.addEventListener("click", () => {
+        auditFilter = btn.dataset.kind;
+        if (auditEverLoaded) loadAddressAudit();
+    });
+});
+
+async function refreshAuditBadge() {
+    // Recompute after table changes only once the user has opened the audit
+    // tab at least once; while it is open keep its list in sync too.
+    if (!auditEverLoaded) return;
+    try {
+        if ($("#tab-audit").classList.contains("active")) {
+            // loadAddressAudit() honours the active filter and refreshes the
+            // summary counts from its own (possibly filtered) response.
+            await loadAddressAudit();
+            return;
+        }
+        // Tab closed: fetch unfiltered just to keep the badge/counts current.
+        const data = await api("/api/address-audit");
+        auditData = data;
+        updateAuditCounts(data);
+    } catch (err) {
+        // Badge refresh is best-effort; ignore failures.
+    }
+}
+
 // ------------------------------------------------------------------ health
 
 async function refreshGapsBadge() {
@@ -752,6 +893,9 @@ async function refreshHealth() {
         $("#addr-count").textContent = h.address_count;
         $("#review-count").textContent = h.needs_review;
         if (h.default_thresholds) window.__defaultThresholds = h.default_thresholds;
+        // Table-affecting actions (uploads, sample load) also invalidate the
+        // cached self-match audit; refresh its badge once the tab was opened.
+        refreshAuditBadge();
     } catch (err) {
         $("#health").textContent = "服务不可用";
         $("#health").className = "badge bad";

@@ -11,7 +11,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from . import consensus, coverage_gaps, db, experiments, ingest, review_groups
+from . import address_audit, consensus, coverage_gaps, db, experiments, ingest, review_groups
 from .config import Settings, get_settings
 from .matcher import candidate_to_dict, match_address, result_to_dict
 from .schemas import (
@@ -433,6 +433,33 @@ def list_coverage_gaps(status: str | None = None,
             detail="非法 status 过滤值，仅支持 open / covered",
         )
     return coverage_gaps.compute_gaps(conn, settings, coverage=status)
+
+
+# --- standard-address self-match audit --------------------------------------
+
+
+@app.get("/api/address-audit")
+def list_address_audit(kind: str | None = None,
+                       conn: db.sqlite3.Connection = Depends(get_conn),
+                       settings: Settings = Depends(settings_dep)) -> dict[str, Any]:
+    """标准地址自匹配巡检：对当前标准地址表中的**每条**地址，以其全文作为
+    查询、使用**默认规则**与**完整地址表**评分；仅返回未自动命中自身 ID 的
+    记录，逐条给出自身分数以及所有分数不低于
+    ``自身分数 - 默认分差阈值`` 的其他地址（不受前五候选截断）。
+
+    自身分数低于自动命中阈值标 ``self_low``（自身分数不足）；自身足够但
+    首选是其他地址标 ``top_shift``（首选偏移）；首选仍是自身但被其他地址
+    追至默认分差阈值以内标 ``margin_ambiguous``（分差歧义）。
+
+    只读操作：不写入、不生成任何匹配日志，也不查询复核共识记忆；每次调用
+    都按当前地址表实时重算，上传新表后刷新即可看到最新结果。
+    """
+    if kind is not None and kind not in address_audit.VALID_KINDS:
+        raise HTTPException(
+            status_code=400,
+            detail="非法 kind 过滤值，仅支持 self_low / top_shift / margin_ambiguous",
+        )
+    return address_audit.compute_audit(conn, settings, kind=kind)
 
 
 # --- rule A/B comparison experiments ----------------------------------------

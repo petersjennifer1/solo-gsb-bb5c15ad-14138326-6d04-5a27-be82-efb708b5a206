@@ -308,7 +308,16 @@ def _detect_conflicts(ts: AddressTokenScore, query_house: str | None,
     return conflicts
 
 
-def match_address(query_text: str, rows: list[Any], settings: Settings) -> MatchResult:
+def _score_candidates(query_text: str, rows: list[Any], settings: Settings
+                      ) -> tuple[Normalized, list[CandidateResult]]:
+    """Score every row against the query.
+
+    Returns the normalised query together with *all* candidates, sorted by
+    score descending; input (id) order is kept for score ties. Unlike
+    :func:`match_address`, no top-5 truncation and no status decision is
+    applied -- callers such as the standard-address self-match audit need
+    every near-tied candidate.
+    """
     query_norm = normalize(query_text)
     results: list[CandidateResult] = []
 
@@ -336,6 +345,21 @@ def match_address(query_text: str, rows: list[Any], settings: Settings) -> Match
         ))
 
     results.sort(key=lambda r: r.score, reverse=True)
+    return query_norm, results
+
+
+def score_candidates(query_text: str, rows: list[Any],
+                     settings: Settings) -> list[CandidateResult]:
+    """All candidates for ``query_text`` scored against the full table.
+
+    Same scoring as :func:`match_address`, but every row is returned (no
+    top-5 cut-off) in descending score order with id order breaking ties.
+    """
+    return _score_candidates(query_text, rows, settings)[1]
+
+
+def match_address(query_text: str, rows: list[Any], settings: Settings) -> MatchResult:
+    query_norm, results = _score_candidates(query_text, rows, settings)
     top = results[:5]
     best = top[0] if top else None
     runner_up = top[1] if len(top) > 1 else None

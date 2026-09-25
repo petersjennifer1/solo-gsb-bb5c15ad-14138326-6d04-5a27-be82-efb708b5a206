@@ -388,3 +388,39 @@ th { color: var(--muted); font-weight: 600; }
 .gap-details > summary {
     cursor: pointer; font-size: 13px; color: var(--primary);
 }
+
+/* ======================================== standard-address self-audit page */
+
+.audit-kind {
+    display: inline-block; padding: 2px 10px; border-radius: 999px;
+    font-size: 12px; font-weight: 700; white-space: nowrap;
+    background: var(--gray-bg); color: var(--muted);
+}
+.audit-kind.self_low { background: var(--red-bg); color: var(--red); }
+.audit-kind.top_shift { background: var(--amber-bg); color: var(--amber); }
+.audit-kind.margin_ambiguous { background: #fff3df; color: #b76e00; }
+
+.audit-filter .audit-n { font-weight: 700; }
+
+.audit-item {
+    border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px 16px; margin-top: 12px; background: #fff;
+}
+.audit-item:has(.self_low) { border-color: #f0c4c4; }
+.audit-summary { cursor: pointer; display: flex; flex-wrap: wrap;
+    align-items: center; gap: 10px; font-size: 14px; }
+.audit-addr { font-weight: 600; word-break: break-all; }
+.audit-self {
+    margin: 10px 0 4px; padding: 8px 12px; border-radius: 8px;
+    background: var(--gray-bg); font-size: 13px; word-break: break-all;
+}
+.audit-self.low { background: var(--red-bg); }
+.audit-self b, .audit-self-details b { color: var(--ink); }
+.audit-reason {
+    margin: 6px 0 10px; padding: 8px 12px; border-left: 3px solid var(--primary);
+    background: var(--gray-bg); border-radius: 0 8px 8px 0;
+    font-size: 13px; word-break: break-all;
+}
+.audit-self-details { margin: 6px 0 10px; }
+.audit-blockers { margin-top: 4px; }
+.audit-blockers-head { font-size: 13px; margin: 8px 0 4px; word-break: break-all; }
